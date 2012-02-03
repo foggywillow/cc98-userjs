@@ -10,13 +10,13 @@
 // ==/UserScript==
 
 // ======================
+const _DEBUG = 1;
+// ======================
 
 function $(id) { return document.getElementById(id); }
 
 // ======================
 
-const AJAXDLG_SHOW = 1;
-const AJAXDLG_HIDE = 0;
 
 // AjaxDialog: 仿 Discuz ajax回复对话框
 // AdminFunction: 为管理者提供一些方便的主题管理功能
@@ -95,85 +95,90 @@ var http = {
 			{
 				callback(xhr);
 			}
-		}
+		};
 		xhr.send(data);
-	}
-}
-
-var html = {
-	getQuoteFromRawHtml: function(rawhtml) {
-		try
-		{
-			var quoteContent = rawhtml.match(/<textarea.*>([\s\S]*)<\/textarea>/i)[1];
-			return quoteContent;
-		}
-		catch(err)
-		{
-			/* 转移到ajaxDialog中处理
-			if (rawhtml.indexOf('本主题已经锁定') != -1)
-			{
-				$('requestState').innerHTML = '本主题已经锁定，不能发帖';
-				$('replySubmit').setAttribute('disabled','disabled');
-			}
-			*/
-			return null;
-		}
 	},
+	
+	upload: function(url, file, callback_success, callback_fail) {
+		var reader = new FileReader();
+		reader.onload = function(e)
+		{
+			var xhr = new XMLHttpRequest();
+			var boundary = "----------------";
+			boundary += parseInt(Math.random()*98989898+1);
+			boundary += parseInt(Math.random()*98989898+1);
 
-	buildQuoteHtml: function(content, url) {
-		var tmpUrl = url.toLowerCase();
-		var boardid = tmpUrl.match(/boardid=([^&]*)/)[1];
-		var id = tmpUrl.match(/&id=([^&]*)/)[1];
-		var page = tmpUrl.match(/&star=([^&]*)/)[1];
-		var floor = tmpUrl.match(/&bm=([^&]*)/)[1];
-		var quoteUrl = "http://www.cc98.org/dispbbs.asp?boardid="+boardid+"&id="+id+"&star="+page+"#"+floor;
+			xhr.open('POST', url, true);
+			xhr.setRequestHeader("Content-Type","multipart/form-data; boundary="+boundary);
+			
+			var data = [boundary,"\r\n",
+				"Content-Disposition: form-data; name=\"act\"\r\n\r\nupload",
+				"\r\n",boundary,"\r\n",
+				"Content-Disposition: form-data; name=\"fname\"\r\n\r\n",file.name,
+				"\r\n",boundary,"\r\n",
+				"Content-Disposition: form-data; name=\"file1\"; filename=\"",file.name,"\"\r\n",
+				"Content-Type: ",file.type,"\r\n\r\n",
+				e.target.result,
+				"\r\n",boundary,"\r\n",
+				"Content-Disposition: form-data; name=\"Submit\"\r\n\r\n\xc9\xcf\xb4\xab",  // 上传
+				"\r\n",boundary,"--\r\n"].join("");
 
-		var insertIndex = content.indexOf("[/b]") + 4;
-		var html = content.substring(0,insertIndex) + "&nbsp;&nbsp;[url=" + quoteUrl + ",t=self][color=blue][b]查看原贴<-[/b][/color][/url]\n" + content.substring(insertIndex);
-
-		return html;
+			xhr.onload = function() {
+				callback_success(xhr);
+			};
+			xhr.onerror = function() {
+				callback_fail(xhr);
+			};
+			xhr.sendAsBinary(data);
+		}
+		reader.readAsBinaryString(file);
 	}
 }
+
+const AJAXDLG_SHOW = 1, AJAXDLG_HIDE = 0;
+const AJAXDLG_IDLE = 0, AJAXDLG_POST = 1, AJAXDLG_UPLOAD = 2;
 
 var ajaxDialog = {
-	html: "<table cellspacing='0' cellpadding='3'><tbody>"+
-				"<tr><td id='cornerul' style=\"height:8px;width:8px;padding:0;background-color:#3F7DBA;\"></td><td style=\"height:8px;width:584px;padding:0;background-color:#3F7DBA\"></td><td id='cornerur' style=\"height:8px;width:8px;padding:0;background-color:#3F7DBA\"></td></tr>"+
-				"<tr><td style=\"width:8px;padding:0;background-color:#3F7DBA;\"></td>"+
-					"<td style=\"padding:0;background-color:\#F5FAFE\"><div style=\"margin:15px;\">" +
-						"<h3 id='ajaxDialogTitle' style=\"cursor:move;\">参与/回复主题"+
-							"<span style=\"float:right;\">"+
-							"<a id='btnCloseDialog' href=\"javascript:;\">"+
-							"<img src='http://file.cc98.org/uploadfile/2010/4/11/1982947828.png' border='0'/></a></span>" +
-						"</h3>"+
-						"<div>标题  <input id='replyTitle' maxlength='50' size='70'></div>" +
-						"<div>"+
-						"<div id='ajaxDialogToolBar' style=\"background-color:#E8E8E8;border-width:1px 1px;height:25px;margin:5px 0 0;\">"+
-							"<a id='btnPostEmotion' href=\"javascript:;\" >"+	// 发贴心情
-							"<img src='http://www.cc98.org/face/face7.gif' border='0' style=\"margin:5px 5px 5px;\" /></a>"+
-							"<a id='btnCC98Emotion' href=\"javascript:;\" >"+	// cc98标准表情
-							"<img src='http://www.cc98.org/emot/simpleemot/emot88.gif' border='0' style=\"margin:5px 5px 5px;width:15px;height:15px\" /></a>"+
-							"<a id='btnUpload' href=\"javascript:;\" >" +   // 上传
-							"<img src='http://file.cc98.org/uploadfile/2010/5/4/21521278526.png' border='0' style=\"margin:5px 5px 5px;width:15px;height:15px;\" /></a>"+
-						"</div>"+
-						"<textarea rows='5' id='replyContent' style='width:570px;height:200px;'></textarea><br/>"+
-						"<table cellpadding='2'><tbody>"+
-						"<tr><td><input type='button' value=' Say! ' id='replySubmit' style='margin-top:3px;'/></td>"+
-						"<td><div id='requestState' style=\"color:red;padding-left:10px;padding-top:3px;\"></div></td></tr>"+
-						"</tbody></table>"+
-					"</div></td>"+
-				"<td style=\"width:8px;padding:0;padding:0;background-color:#3F7DBA;\"></td></tr>"+
-				"<tr><td id='cornerdl' style=\"height:8px;width:8px;padding:0;background-color:#3F7DBA;\"></td><td style=\"height:8px;width:584px;padding:0;background-color:#3F7DBA\"></td><td id='cornerdr' style=\"height:8px;width:8px;padding:0;background-color:#3F7DBA\"></td></tr>"+
-			"</tbody></table>",
 	state: AJAXDLG_HIDE,
+	work: AJAXDLG_IDLE,
 	dialog: null,
 	_isDragging: false,
 	_x: 0,
 	_y: 0,
 
 	createDialog: function() {
+		var html = "<table cellspacing='0' cellpadding='3'><tbody>"+
+					"<tr><td id='cornerul' class='dlgborder' style=\"height:8px;width:8px;padding:0;\"></td><td class='dlgborder' style=\"height:8px;width:584px;padding:0\"></td><td id='cornerur' class='dlgborder' style=\"height:8px;width:8px;padding:0\"></td></tr>"+
+					"<tr><td class='dlgborder' style=\"width:8px;padding:0;\"></td>"+
+						"<td style=\"padding:0;background-color:\#F5FAFE\"><div style=\"margin:15px;\">" +
+							"<h3 id='ajaxDialogTitle' style=\"cursor:move;\">参与/回复主题"+
+								"<span style=\"float:right;\">"+
+								"<a id='btnCloseDialog' href=\"javascript:;\">"+
+								"<img src='http://file.cc98.org/uploadfile/2010/4/11/1982947828.png' border='0'/></a></span>" +
+							"</h3>"+
+							"<div>标题  <input id='replyTitle' maxlength='100' size='70'></div>" +
+							"<div>"+
+							"<div id='ajaxDialogToolBar' style=\"background-color:#E8E8E8;border-width:1px 1px;height:25px;margin:5px 0 0;\">"+
+								"<a id='btnPostEmotion' href=\"javascript:;\" >"+	// 发贴心情
+								"<img src='http://www.cc98.org/face/face7.gif' border='0' style=\"margin:5px 5px 5px;\" /></a>"+
+								"<a id='btnCC98Emotion' href=\"javascript:;\" >"+	// cc98标准表情
+								"<img src='http://www.cc98.org/emot/simpleemot/emot88.gif' border='0' style=\"margin:5px 5px 5px;width:15px;height:15px\" /></a>"+
+								"<a id='btnUpload' href=\"javascript:;\" >" +   // 上传
+								"<img src='http://file.cc98.org/uploadfile/2010/5/4/21521278526.png' border='0' style=\"margin:5px 5px 5px;width:15px;height:15px;\" /></a>"+
+							"</div>"+
+							"<div id='funcContent'></div>"+
+							"<div id='contentContainer' style='background-color:#E8E8E8; width:574px; height:204px;'><textarea rows='5' id='replyContent' style='width:570px;height:200px;margin:2px;'></textarea></div>"+
+							"<table cellpadding='2'><tbody>"+
+							"<tr><td><input type='button' value=' Say! ' id='replySubmit' style='margin-top:3px;'/></td>"+
+							"<td><div id='requestState' style=\"color:red;padding-left:10px;padding-top:3px;\"></div></td></tr>"+
+							"</tbody></table>"+
+						"</div></td>"+
+					"<td class='dlgborder' style=\"width:8px;padding:0;padding:0;\"></td></tr>"+
+					"<tr><td class='dlgborder' id='cornerdl' style=\"height:8px;width:8px;padding:0;\"></td><td class='dlgborder' style=\"height:8px;width:584px;padding:0;\"></td><td class='dlgborder' id='cornerdr' style=\"height:8px;width:8px;padding:0;\"></td></tr>"+
+				"</tbody></table>";
 		var ajaxDialog = document.createElement('div');
 		ajaxDialog.id = 'ajaxDialog';
-		ajaxDialog.innerHTML = this.html;
+		ajaxDialog.innerHTML = html;
 
 		if (cc98.isUserTheme)
 		{
@@ -194,6 +199,7 @@ var ajaxDialog = {
 				+ "#cornerur { border-radius: 0 6px 0 0; }"
 				+ "#cornerdl { border-radius: 0 0 0 6px; }"
 				+ "#cornerdr { border-radius: 0 0 6px 0; }"
+				+ ".dlgborder { background-color: #15acea; }";
 		
 		GM_addStyle(css);
 		
@@ -235,10 +241,129 @@ var ajaxDialog = {
 		this._isDragging = false;
 	},
 */
+	// html5 upload
+	// 代码参照http://ie.microsoft.com/testdrive/HTML5/CORSUpload/Default.html
+	handleUpload: function(e) {
+		e.stopPropagation();
+		e.preventDefault();
+		
+		if (ajaxDialog.work != AJAXDLG_IDLE)	// 在处理其它工作，返回
+			return ;
+
+		var filelist = e.dataTransfer.files;
+		if (!filelist || !filelist.length) return ; 
+
+		ajaxDialog.work = AJAXDLG_UPLOAD;
+		
+		var ctn = $('contentContainer');
+
+		var html5uploadpanel = document.createElement('div');
+		html5uploadpanel.id = 'html5uploadpanel';
+		html5uploadpanel.innerHTML = 
+			'<table cellspacing="0" style="width:100%;">'+
+			'<thead><tr><th width="50%">文件名</th><th width="20%">大小</th><th width="30%">状态</th></tr></thead>'+
+			'<tbody id="uploadresult"></tbody>';
+		var css = "#html5uploadpanel { width:570px; height:200px; position:relative; top:-202px; left:2px; background-color:#E8E8E8; }"+
+			"#uploadresult > *:nth-child(even) { background-color:#ddd; } #uploadresult > *:nth-child(odd) { background-color:#eee; }"+
+			".uploadfail { color:#900; } .uploadsuccess { color:#090; }";
+		GM_addStyle(css);
+		ctn.appendChild(html5uploadpanel);
+		var uploadresult = html5uploadpanel.firstChild.childNodes[1];	// tbody
+		var postcontent = ctn.firstChild;
+
+		var url = document.location.toString().toLowerCase();
+		var boardid = url.match(/boardid=([^&]*)/)[1];
+		url = "http://www.cc98.org/saveannouce_upfile.asp?boardid="+boardid;
+		var list = [];
+		for (var i = 0; i < filelist.length && i < 10; i++)
+		{
+			list.push(filelist[i]);
+		}
+		uploadNext();
+
+
+		function uploadNext()
+		{
+			if (list.length)
+			{
+				uploadFile(list.shift());
+			}
+			else  // 所有文件都上传完成
+			{
+				setTimeout(function() {
+						ctn.style.backgroundColor='#E8E8E8';
+						ctn.removeChild(html5uploadpanel);
+						ajaxDialog.work = AJAXDLG_IDLE; },
+					1000);
+			}
+		};
+
+
+		function uploadFile(file)
+		{
+			var result = document.createElement("tr");
+			var name = document.createElement("td");
+			var size = document.createElement("td");
+			var status = document.createElement("td");
+
+			result.appendChild(name);
+			result.appendChild(size);
+			result.appendChild(status);
+			uploadresult.appendChild(result);
+
+			name.textContent = file.name;
+			size.textContent = (file.size / 1024).toFixed(2) + " kB";
+
+			if (file.size >= 500*1024)  // 文件大小大于500K，不能上传
+			{
+				status.textContent = "文件大于500k";
+				status.className = "uploadfail";
+				uploadNext();
+			}
+			else
+			{
+				function handleUploadSuccess(xhr) {
+					var response = xhr.responseText;
+					var pattern = /<script>insertupload\('([^'"]+)'\);<\/script>/i;
+
+					if (pattern.exec(response))
+					{
+						status.textContent = "上传成功"; 
+						status.className = "uploadsuccess";
+						postcontent.value += RegExp.$1;
+					}
+					else if (response.indexOf("文件格式不正确") != -1)
+					{
+						status.textContent = "文件格式不正确";
+						status.className = "uploadfail";
+					}
+					else {
+						status.textContent = "上传失败";
+						status.className = "uploadfail";
+					}
+					uploadNext();
+				};
+
+				function handleUploadFail(xhr) {
+					status.textContent = "上传失败";
+					status.className = "uploadfail";
+					uploadNext();
+				};
+				
+				status.textContent = "上传中...";
+				http.upload(url, file, handleUploadSuccess, handleUploadFail);
+			}
+		};
+	},
+	
+
 	submit: function() {
 		if (this.state == AJAXDLG_HIDE)
 			return ;
 				
+		if (this.work != AJAXDLG_IDLE)
+			return ;
+
 		var btnReply = $('replySubmit');
 		if (btnReply.getAttribute('disabled') == 'disabled')
 			return ;
@@ -305,6 +430,7 @@ var ajaxDialog = {
 		$('btnCloseDialog').addEventListener('click',
 			function() { ajaxDialog.hideDialog(); },
 			false );
+		/*
 		var dialogTitle = $('ajaxDialogTitle');
 		dialogTitle.addEventListener('mousedown',
 			function(event) { ajaxDialog.beginDrag(event); },
@@ -315,10 +441,25 @@ var ajaxDialog = {
 		dialogTitle.addEventListener('mousemove',
 			function(event) { ajaxDialog.onDrag(event) },
 			false );
-
+		*/
 		var btnPost = $('replySubmit');
 		btnPost.addEventListener('click',
-			function() { ajaxDialog.submit() },
+			function() { ajaxDialog.submit(); },
+			false );
+
+		// html5 upload
+		var cnt = $('contentContainer');
+		cnt.addEventListener('dragenter',
+			function() {this.style.backgroundColor='#15acea';},
+			false );
+		cnt.addEventListener('dragleave',
+			function() {this.style.backgroundColor='#E8E8E8';},
+			false );
+		cnt.addEventListener('dragover',
+			function(e) { e.stopPropagation(); e.preventDefault(); },
+			false );
+		cnt.addEventListener('drop',
+			ajaxDialog.handleUpload,
 			false );
 	}
 	
@@ -338,6 +479,41 @@ var mjManager = {
 	}
 }
 
+var html = {
+	getQuoteFromRawHtml: function(rawhtml) {
+		try
+		{
+			var quoteContent = rawhtml.match(/<textarea.*>([\s\S]*)<\/textarea>/i)[1];
+			return quoteContent;
+		}
+		catch(err)
+		{
+			/* 转移到ajaxDialog中处理
+			if (rawhtml.indexOf('本主题已经锁定') != -1)
+			{
+				$('requestState').innerHTML = '本主题已经锁定，不能发帖';
+				$('replySubmit').setAttribute('disabled','disabled');
+			}
+			*/
+			return null;
+		}
+	},
+
+	buildQuoteHtml: function(content, url) {
+		var tmpUrl = url.toLowerCase();
+		var boardid = tmpUrl.match(/boardid=([^&]*)/)[1];
+		var id = tmpUrl.match(/&id=([^&]*)/)[1];
+		var page = tmpUrl.match(/&star=([^&]*)/)[1];
+		var floor = tmpUrl.match(/&bm=([^&]*)/)[1];
+		var quoteUrl = "http://www.cc98.org/dispbbs.asp?boardid="+boardid+"&id="+id+"&star="+page+"#"+floor;
+
+		var insertIndex = content.indexOf("[/b]") + 4;
+		var html = content.substring(0,insertIndex) + "&nbsp;&nbsp;[url=" + quoteUrl + ",t=self][color=blue][b]查看原贴<-[/b][/color][/url]\n" + content.substring(insertIndex);
+
+		return html;
+	}
+}
+
 // cc98相关参数
 const CC98_NOTLOGIN = 0, CC98_LOGIN = 1;
 var cc98 = {
@@ -350,6 +526,15 @@ var cc98 = {
 	checkState: function() {
 		var pattern = /cc98Simple=(\d{1})/i;
 		this.isSimpleEdition = (pattern.exec(document.cookie) && RegExp.$1 == "1");
+
+		pattern = /username=([^&]+)/i;
+		if (pattern.exec(document.cookie))
+		{
+			this.state = CC98_LOGIN;
+			this.username = RegExp.$1;
+		}
+		else
+			this.state = CC98_NOTLOGIN;
 	},
 
 	addQuoteIcon: function() {
@@ -418,7 +603,7 @@ var cc98 = {
 	}
 }
 
-const UNKNOWN = 0, FIREFOX = 1, CHROME = 2;
+const UNKNOWN = 0, GM = 1, SCRIPTISH = 2, FIREFOX = 3, CHROME = 4, OPERA = 5;
 const NOTSTART = 0, STARTINIT = 1, IDLE = 2;
 
 // 脚本相关		
@@ -465,19 +650,36 @@ var app = {
 		
 		//$('mjMenuTitle').hover(function() { mjManager.showMJList(); });
 	},
-
-	appInitAtStart: function() {
-		// 检查浏览器(firefox使用scriptish扩展)
-		/*
-		if ($.browser.mozilla)
-			browser = FIREFOX;
-		else if ($.browser.webkit)
+	
+	checkEnvironment: function() {
+		if (typeof(GM_log) != 'undefined')  // Greasemonkey or Scriptish
+		{
+			if (typeof(GM_setClipboard) != 'undefined')  // Scriptish
+				browser = SCRIPTISH;
+			else
+				browser = GM;
+		}
+		else if (window.opera)	// Opera
+			browser = OPERA;
+		else if (window.google || window.chrome || window.chromium)  // Chrome or Chromium
 			browser = CHROME;
+		else if (window.mozIndexedDB)  // Firefox
+			browser = FIREFOX;
 		else
 			browser = UNKNOWN;
-		*/
+
+		if (_DEBUG == 1)
+		{
+			console.info(browser);
+		}
+	},
+
+	appInitAtStart: function() {
+
 		if (this.state != NOTSTART)
 			return ;
+
+		this.checkEnvironment();
 
 		cc98.checkState();
 
@@ -508,9 +710,10 @@ var app = {
 
 // ============================
 
-document.addEventListener("DOMContentLoaded", function(){ DOMLoad(); } , false);
-
 app.appInitAtStart();
+
+// 现在DOMContentLoaded事件在HTML5规范中标准化了，FF, Chrome, Opera都支持
+document.addEventListener("DOMContentLoaded", function(){ DOMLoad(); } , false);
 
 // =========================================
 
